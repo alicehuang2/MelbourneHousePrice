@@ -1,0 +1,310 @@
+---
+title: "Melbourne housing market"
+output: 
+  github_document
+---
+
+# Introduction
+
+This is a comprehensive Exploratory Data Analysis for [Melbourne Housing Market](https://www.kaggle.com/anthonypino/melbourne-housing-market). 
+
+**The goal** is to build a model that predict price of Housing property in Melbourne. I will study, clean, and visualise the original data, engineer new features, and use linear regression to investigates which features are most predictive of the **Price** of the property.
+
+# Load Data
+
+```{r loaddata, message=FALSE, warning=FALSE}
+library(tidyverse)
+df<- read.csv("melbourne.csv")
+colnames(df) <- tolower(colnames(df))
+
+# ignore all NAs for now
+df <- na.omit(df)
+
+# delete irrelevant columns I will not use.
+df <- df[,-c(1,2,7,8,10,17:19)]
+```
+
+## Data overview
+
+There are a lot of outliers for numerical variables, while for categorical variable, there are levels that have very small number of observation.
+```{r}
+glimpse(df)
+summary(df)
+```
+
+# Feature engineer
+
+1. Age: the exact year of the property may not be of significant, so let's transform the year built variable to binary age variable, `Historic`: older than 50 years property or `Contemporary`: younger than 50 years property.
+
+2. Landsize: There are a lot of `zero` value in landsize. These observations may be indicative of `Zero-lot-line` homes-residential real estate, where structure comes very near the edge of the property line. Thus, they are valid. Landsize is heavily right skewed, I will break the continuous variable into categorical variable: `zero` size, `small` size, `medium` and `large`.
+```{r, message=FALSE, warning=FALSE}
+df <- df %>%
+  mutate(age = factor(ifelse((2018 - yearbuilt) > 50, "Historic", "Contemporary")))
+
+# landsize: zero lot:
+ggplot(df, aes(landsize))+geom_histogram(col="white")
+quantile(df$landsize, c(0.01, 0.99))
+
+land <- df %>% filter(landsize==0)
+land1 <- df %>% filter(landsize>0, landsize <=2787)
+
+ggplot(land1, aes(landsize, color=factor(bathroom)))+
+  geom_density()+geom_vline(xintercept = c(430,950))
+ggplot(land1, aes(landsize, color=type))+
+  geom_density()+geom_vline(xintercept = c(430,950))
+
+df <- df %>%
+  mutate(landsizecat = factor(ifelse(landsize==0, "zero", 
+                                     ifelse(landsize %in% 1:429, "small",
+                                     ifelse(landsize %in% 430:949, "medium",
+                                      "large")))))
+```
+
+## Data cleaning
+
+1. Bedroom2 is removed given room specify the same thing.
+2. For categorical variable whose proportion of unique values over sample size is low (<9%), I will drop those levels since severely disproportional levels will affect our model. 
+
+Hence, I have drop levels from `Method`, `Region` and `Landsizecat`. 
+
+3. Also, I have deleted the only zero value in buildingarea since it's not possible for property to have 0 building area.
+```{r}
+# Remove redundant variables:
+# Rooms and Bedroom2 both specify the same thing. We will remove one for ease of modeling. Since Bedroom2 had 0 values, we will remove Bedroom2 and keep Room.
+roomvsbedroom <- df %>%
+  select(rooms, bedroom2) %>%
+  mutate(diff = rooms - bedroom2)
+summary(roomvsbedroom)
+
+df <- df[,-6]
+
+# method:
+prop.table(table(df$method))
+df <- df %>%
+  filter(method %in% c("PI", "S", "SP"))
+df$method <- droplevels(df$method)
+
+# region:
+prop.table(table(df$regionname))
+df <- df %>%
+  filter(regionname %in% c("Eastern Metropolitan", "Northern Metropolitan", 
+                       "Southern Metropolitan", "Western Metropolitan"))
+df$regionname <- droplevels(df$regionname)
+
+df <- mutate(df, region = fct_recode(regionname,
+                                         "E Metro" = "Eastern Metropolitan",
+                                         "N Metro" =  "Northern Metropolitan",
+                                         "S Metro" = "Southern Metropolitan",
+                                         "W Metro" = "Western Metropolitan"))
+
+# landsizecat:
+prop.table(table(df$landsizecat))
+df <- df %>%
+  filter(landsizecat %in% c("medium", "small", "zero"))
+df$landsizecat <- droplevels(df$landsizecat)
+
+summary(df)
+df <- df %>% filter(buildingarea>0)
+df <- df[,-c(8,10,11,12)]
+
+# Treat outlier:
+# Let's keep 98% of the data, getting rid of <1% and > 99%.
+quantile(df$buildingarea, c(0.01,0.99))
+quantile(df$bathroom, 0.99)
+quantile(df$rooms, 0.99)
+df <- df %>%
+  filter(buildingarea <= 403, buildingarea>33,
+         bathroom <=4, rooms<=5)
+```
+
+# Visualization
+
+## Univariate variable: 
+All the continuous variables are right skewed. 
+```{r Univariate, message=FALSE, warning=FALSE}
+df %>%
+  keep(is.numeric) %>%
+  gather() %>%
+  ggplot(aes(value)) +
+    facet_wrap(~key, scales='free') +
+    geom_histogram(col="white")
+    
+df %>%
+  keep(is.factor) %>%
+  gather() %>%
+  ggplot(aes(value)) +
+    facet_wrap(~key, scales='free') +
+    geom_bar()
+```
+
+```{r output variable, message=FALSE, warning=FALSE}
+library(scales)
+options(scipen = 999) 
+
+ggplot(df, aes(price)) + 
+  geom_density() + scale_x_continuous(labels = dollar) +
+  labs(x = "", y = "", title = "Price distribution")
+```
+
+## Feature relations
+
+I am curious about the following predictors, let's examine their relationship with `Price`. 
+
+Log transforming `Buildingarea` and `price` suggest a nice linear relationship. The categorical variable I transform for `landsize` suggest bigger landsize higher median price. For `Region`, Southern metropolitan has the highest median price also most outlier. 
+
+```{r Bivariate}
+ggplot(df, aes(landsizecat, price)) + geom_boxplot()
+ggplot(df, aes(log(buildingarea), log(price))) + 
+  geom_point() +
+  geom_smooth(method="loess")
+ggplot(df, aes(region, price)) + geom_boxplot()
+```
+
+# Split data into training and testing:
+```{r, message=FALSE, warning=FALSE}
+library(caret)
+set.seed(7)
+validationIndex <- createDataPartition(df$price, p=0.80, list=FALSE)
+test <- df[-validationIndex,]
+train <- df[validationIndex,]
+```
+
+## Calculate statistics
+
+Let's evaluate continous variables for skewness and transform skew predictor using BoxCox transformation. 
+
+From `BoxCoxTrans()` function, it recommends us to log transform price and the estimated lambda for buildingarea is 0.1, it's close to 0, so I will log transform it as well. 
+
+```{r skewness}
+# calculate skewness
+library(e1071)
+(skew <- apply(train[,-c(2,4,9:11)],2,skewness))
+
+# find appropriate transformation
+BoxCoxTrans(train$price)
+BoxCoxTrans(train$buildingarea)
+```
+
+# Correlation 
+
+* Price is correlated most with buildingarea, room, bathroom, then type. Rooms is positively correlated with many other predictors. 
+```{r Correlation columns}
+cor <- train
+cor$landsizecat <- recode_factor(cor$landsizecat, 'zero' = "0", 'small' = "1", 
+                                 'medium' = "2")
+cor$landsizecat <- as.numeric(as.character(cor$landsizecat))
+cols <- c("type", "method", "region", "age")
+cor[cols] <- lapply(cor[cols], as.numeric)
+
+library(corrplot)
+cor %>%
+  select(price, everything()) %>%
+  cor(method = "pearson") %>%
+  corrplot(type = "lower", method = "number", diag = FALSE)
+```
+
+From `Applied predictive modeling` book, a more heuristic approach to dealing with correlation is to remove minimum number of predictors to ensure all pairwise correlation are below a certain threshold. This method only identify collinearity in 2 dimensions, but it can have significant positive effect on performance of models.
+
+All pairwise correlation should be below 0.7. Two predictors with the largest absolute pairwise correlation are `Rooms` and `Buildingarea`. Let's calculate the average correlation for each predictor with other predictors and remove the one with largest average correlation.
+
+Given `Rooms` has the largest average correlation, let's remove it. 
+```{r Correlation, message=FALSE, warning=FALSE}
+# predictor A and B, rooms and buildingarea
+# find average correlation between A and other variable
+# find average correlation between B and other variable:
+a <- c(0.55,0.08,0.29,0.58,0.41,0.75,0.09,0.56)
+b <- c(0.75,0.48,0.11,0.22,0.68,0.4,0.51,0.06)
+sum(a)/8
+sum(b)/8
+```
+
+# Final model:
+```{r}
+trainTrans <- train %>%
+  mutate(lprice = log(price),
+         lbuild = log(buildingarea)) %>%
+  select(-c("rooms", "price", "buildingarea"))
+```
+
+# Model building
+
+I will compare linear regression model with a regression tree model to see which performs better.
+
+## Linear regression
+
+I will use 10-fold cross validation (each fold will be about 3618 instances for training and 403 instances for testing) with 3 repeats to estimate the variability of my model. RMSE and R^2 metrics will be used to evaluate algorithm. RMSE will give idea of how wrong all predictions are (0 being perfect) and R^2 will give an idea of how well the model fit the data (1 being perfect, 0 being worst.)
+
+Cross validation for linear regression model indicate RMSE of 0.2379, R-squared of 0.7878.
+
+For models built to explain, it's important to check model assumptions, such as residual distribution. We can look at `Residual vs Predicted` values for the model, if the plot shows a random cloud of points, we will feel more comfortable that there are no major terms missing from the model. Another plot to look at is `Observed vs Predicted` to assess how close the prediction are to the actual values.
+
+`Residual vs Predicted` plot shows the residual randomly scattered about 0 with respect to predicted value while the points in `Observed vs Predicted` is close to a regressed diagonal line which indicate linear regression model is a good fit. 
+
+Test set RMSE is 0.2440, R-squared 0.7835.
+```{r lm, message=FALSE, warning=FALSE}
+ctrl <- trainControl(method="repeatedcv", number=10, repeats=3)
+metric <- "RMSE"
+
+# Linear regression
+set.seed(100)
+lm1 <- train(lprice~., data=trainTrans, method="lm", metric= metric, trControl=ctrl)
+lm1
+
+# regression diagnostic:
+xyplot(trainTrans$lprice ~ predict(lm1),
+       type=c("p", "g"),
+       xlab="Predicted", ylab="Observed")
+xyplot(resid(lm1) ~ predict(lm1),
+       type=c("p", "g"),
+       xlab="Predicted", ylab="Residuals")
+
+# Predict on test set:
+testTrans <- test %>%
+  mutate(lprice = log(price),
+         lbuild = log(buildingarea)) %>%
+  select(-c("rooms", "price", "buildingarea"))
+
+lmpred <- predict(lm1,testTrans)
+postResample(pred=lmpred, obs=testTrans$lprice)
+```
+
+## Regression tree
+
+Regression tree partition a data set into smaller groups and then fit a simple model for each subgroup. Advantage of using regression tree compared to linear regression is that it's easier to explain the result compare to linear regression. 
+
+The top split assigns observation having log(buildingarea) [buildingarea of the property] smaller than 4.6, which is approximately 1076 square foot property to the left, the predicted price for property who is either a `Townhouse` or `Unit` with buildingarea < 718 square foot cost around $423,064.
+ 
+If the property is greater than 1076 square foot, and it's in Northern Metropolitan or Western Metropolitan area with distance > 9.2, its predicted price is 698,807.
+
+Test set RMSE associated with regression tree is: 0.3033, which is slightly higher than linear regression model.
+```{r regressiontree, message=FALSE, warning=FALSE}
+library(rpart)
+library(rpart.plot)
+
+# method ="anova" specifying fitting regression tree.
+tree1 <- rpart(lprice~., trainTrans, method="anova")
+tree1
+rpart.plot(tree1) # default print it will show percentage of data that fall to that node and the average sales price for that branch. 
+
+# behind the scene, rpart automatically apply a range of cost complexity to prune the tree. To compare the error for each alpha value, rpart performs a 10 fold CV so that error associated with given alpha value is computed on hold-out validation data. In this example, we find diminishing returns after 12 terminal nodes. 
+plotcp(tree1)
+tree1$cptable
+
+# make prediction
+treepred <- predict(tree1, testTrans)
+RMSE(pred = treepred, obs = testTrans$lprice)
+```
+
+## Variable Importance
+
+Finally, let's check which variable is most predictive of price. The predictors with largest average impact to SSE are consider most important. The importance value is relative mean decrease in SSE compare to most important variable (0-100 scale.)
+
+```{r}
+plot(varImp(lm1))
+```
+
+# Conclusion:
+
+Examining the importance of each variable, building area distance are the 2 most important variable in predicting price, which plays well to our intuitive knowledge that size and location of the property shape property prices. 
+
+Even though regression tree is much easier to interpret, linear regression model output the smaller test set RMSE.
