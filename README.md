@@ -35,6 +35,8 @@ This is a comprehensive Exploratory Data Analysis for [Melbourne Housing Market]
 
 Price is heavily right skewed, with median at around 900k.
 
+![](melbournehousing_files/figure-markdown_github/output%20variable-1.png)
+
 **Linear Regression model**
 
 I will use 10-fold cross validation (each fold will be about 3618 instances for training and 403 instances for testing) with 3 repeats to estimate the variability of my model. 
