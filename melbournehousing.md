@@ -652,6 +652,6 @@ plot(varImp(lm1))
 Conclusion:
 ===========
 
-Examining the importance of each variable, building area distance are the 2 most important variable in predicting price, which plays well to our intuitive knowledge that size and location of the property shape property prices.
+Examining the importance of each variable, building area and distance are the 2 most important variable in predicting price, which plays well to our intuitive knowledge that size and location of the property shape property prices.
 
 Even though regression tree is much easier to interpret, linear regression model output the smaller test set RMSE.
