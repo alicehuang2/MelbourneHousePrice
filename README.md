@@ -2,7 +2,14 @@
 
 This is a comprehensive Exploratory Data Analysis for [Melbourne Housing Market](https://www.kaggle.com/anthonypino/melbourne-housing-market). 
 
-**The goal** is to find out which features are most predictive of Housing Prices in Melbourne. I will study, clean, and visualise the original data, engineer new features, and compare models among `Linear Regression`, `Regression Tree` and `Random Forest` to identify which model produce the lowest RMSE. 
+**The goal** is to find out which features are most predictive of Housing Prices in Melbourne. I will study, clean, and visualise the original data, engineer new features, and compare models among `Linear Regression` and `Regression Tree` to identify which model produce the lowest RMSE. 
+
+**Conclusion** Examining the importance of each variable, building area and distance are the 2 most important variables in predicting price, which plays well to our intuitive knowledge that size and location of the property shape property prices.
+
+![](melbournehousing_files/figure-markdown_github/unnamed-chunk-6-1.png)
+
+Even though regression tree is much easier to interpret, linear regression model output the smaller test set RMSE.
+
 
 **Variables**
 
@@ -53,14 +60,6 @@ Test set RMSE associated with regression tree is: 0.3033, which is slightly high
 
 ![](melbournehousing_files/figure-markdown_github/regressiontree-1.png)
 
-**Variable Importance**
 
-![](melbournehousing_files/figure-markdown_github/unnamed-chunk-6-1.png)
-
-Examining the importance of each variable, building area and distance are the 2 most important variable in predicting price, which plays well to our intuitive knowledge that size and location of the property shape property prices.
-
-**Conclusion**
-
-Even though regression tree is much easier to interpret, linear regression model output the smaller test set RMSE.
 
 
