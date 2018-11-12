@@ -60,6 +60,9 @@ Test set RMSE associated with regression tree is: 0.3033, which is slightly high
 
 ![](melbournehousing_files/figure-markdown_github/regressiontree-1.png)
 
+The top split assigns observation having log(buildingarea) [buildingarea of the property] smaller than 4.6, which is approximately 1076 square foot property to the left, the predicted price for property who is either a Townhouse or Unit with buildingarea < 718 square foot cost around $423,064.
+
+If the property is greater than 1076 square foot, and it's in Northern Metropolitan or Western Metropolitan area with distance > 9.2, its predicted price is 698,807.
 
 
 
